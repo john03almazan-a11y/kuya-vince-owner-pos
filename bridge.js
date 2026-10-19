@@ -7,7 +7,7 @@
  const originAllowed=/^https:\/\/(?:[a-z0-9-]+\.googleusercontent\.com|script\.google\.com)$/i;
  const random=()=>{const a=new Uint8Array(24);crypto.getRandomValues(a);return Array.from(a).map(x=>x.toString(16).padStart(2,'0')).join('')};
  const nonce=random();
- let bridgeWindow=null,bridgeOrigin='',connected=false,resolveReady,rejectReady;
+ let bridgeWindow=null,bridgeOrigin='',connected=false,resolveReady,rejectReady,lastStage='Connecting to Apps Script';
  const pending=new Map();let counter=0;
  const ready=new Promise((resolve,reject)=>{resolveReady=resolve;rejectReady=reject});
  function errorText(e){return e instanceof Error?e.message:String(e||'unknown error')}
@@ -30,13 +30,19 @@
   if(!d||d.source!=='kuya-vince-bridge-v12'||d.nonce!==nonce||!originAllowed.test(event.origin))return;
   if(d.type==='ready'){
    if(connected)return;
-   bridgeWindow=event.source;bridgeOrigin=event.origin;connected=true;resolveReady();
+   bridgeWindow=event.source;bridgeOrigin=event.origin;connected=true;lastStage='Bridge ready';resolveReady();
    document.documentElement.setAttribute('data-backend-connected','true');
    return;
   }
-  if(!connected||event.source!==bridgeWindow||event.origin!==bridgeOrigin||d.type!=='result')return;
+  if(!connected||event.source!==bridgeWindow||event.origin!==bridgeOrigin)return;
+  if(d.type==='received'){
+   const p=pending.get(d.id);if(p){p.received=true;lastStage='Bridge acknowledged request';}
+   return;
+  }
+  if(d.type!=='result')return;
   const p=pending.get(d.id);if(!p)return;
   clearTimeout(p.timer);pending.delete(d.id);
+  lastStage=d.ok?'Server responded':'Server returned an error';
   if(d.ok)p.resolve(d.data);else p.reject(Error(String(d.error||'The Google Sheets request failed.')));
  });
  window.KV_BRIDGE_SERVICE=async function(method,...args){
@@ -45,11 +51,12 @@
   const id=String(++counter),message={source:'kuya-vince-owner-v12',nonce,type:'request',id,method,args};
   if(JSON.stringify(message).length>150000)throw Error('Request too large.');
   return new Promise((resolve,reject)=>{
-   const timer=setTimeout(()=>{pending.delete(id);reject(Error('The POS backend timed out. Check your connection and retry.'))},65000);
-   pending.set(id,{resolve,reject,timer});
+   const timer=setTimeout(()=>{const p=pending.get(id);pending.delete(id);const msg=p&&p.received?'Apps Script bridge received your request but the server did not respond. Open Apps Script > Executions and check posLogin.':'Apps Script bridge did not receive the login request. The embedded iframe message is blocked; please report this exact error.';lastStage=msg;reject(Error(msg))},65000);
+   pending.set(id,{resolve,reject,timer,received:false});
+   lastStage='Waiting for bridge acknowledgement';
    try{bridgeWindow.postMessage(message,bridgeOrigin)}catch(e){clearTimeout(timer);pending.delete(id);reject(Error(errorText(e)))}
   });
  };
- window.KV_BRIDGE_STATUS=()=>({connected,pending:pending.size,backend:WEB_APP});
+ window.KV_BRIDGE_STATUS=()=>({connected,pending:pending.size,backend:WEB_APP,stage:lastStage,acknowledged:[...pending.values()].filter(p=>p.received).length});
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
