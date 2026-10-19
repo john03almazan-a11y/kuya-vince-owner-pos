@@ -304,6 +304,59 @@ button.kv-expdash-breakrow:hover{background:#f1f7ef}
 .scanner-actions>.btn{flex:1 1 155px}
 </style>
 
+
+<style id="kv-122-expiry-search-ui">
+/* Kuya Vince Store matching cream, deep teal, turquoise, coral and gold */
+.kv-home-stockstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0 17px}
+.kv-home-stock{background:#fffdf8;border:1px solid #e7dfd0;border-radius:12px;padding:13px 11px;display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:#0B3C49;min-width:0;text-align:left}
+.kv-home-stock:hover{border-color:#6BCBC5;background:#f3fcf8}
+.kv-home-stock small{font-size:10px;font-weight:900;color:#567680;letter-spacing:.6px}
+.kv-home-stock strong{font-size:clamp(17px,2.4vw,26px);font-weight:950;line-height:1.1}
+.kv-home-stock span{font-size:11px;color:#66818a}
+.kv-home-stock.kv-stock-action{background:#0B3C49;border-color:#0B3C49;color:white;justify-content:center}
+.kv-home-stock.kv-stock-action strong{font-size:17px;color:white}.kv-home-stock.kv-stock-action span{color:#cae6e3}
+.kv-product-search-wrap{position:relative}
+.kv-suggestion-list{display:none;background:#fff;border:1px solid #a8d5d1;box-shadow:0 12px 24px #0b3c4926;border-radius:12px;max-height:305px;overflow-y:auto;position:relative;z-index:7;margin:5px 0}
+.kv-suggestion-list.open{display:block}
+.kv-product-option{width:100%;border:0;border-bottom:1px solid #edf1eb;padding:10px 9px;display:flex;align-items:center;gap:8px;text-align:left;background:#fffdf8;color:#0B3C49}
+.kv-product-option:hover,.kv-product-option:focus{background:#e5f4f0}
+.kv-product-option-icon{font-size:24px;flex:0 0 34px;text-align:center}
+.kv-product-option-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.kv-product-option-text strong{font-size:12px;overflow-wrap:anywhere}.kv-product-option-text small{font-size:10px;color:#617b81}
+.kv-product-stock-pill{font-size:10px;background:#d7e9e4;color:#0B3C49;border-radius:99px;padding:6px 8px;flex-shrink:0;font-weight:850}
+.kv-no-suggestion{padding:13px;font-size:12px;color:#647b7e}
+.kv-finder-card{max-width:740px;margin:12px auto}.kv-finder-details{margin:12px 0}.kv-finder-empty{background:#fff6e5;border-radius:9px;padding:12px;color:#876c37;font-size:12px}
+.kv-found-product{border-radius:12px;background:#e8f6f2;display:flex;align-items:center;gap:12px;padding:14px;color:#0B3C49}.kv-found-product strong{font-size:14px}
+.kv-expiry-head{background:linear-gradient(115deg,#0B3C49,#146873);border-radius:16px;padding:18px 20px;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.kv-expiry-head h3{font:800 24px Georgia,serif;color:white;margin:3px 0 6px}.kv-expiry-head p{font-size:11px;color:#d1e9e7;margin:0}
+.kv-expiry-overline{font-size:10px;font-weight:900;letter-spacing:1px;color:#FFC047}
+.kv-expiry-head button{white-space:nowrap;background:#FF6B50;color:white;border:0}
+.kv-expiry-presets{display:flex;flex-wrap:wrap;gap:6px;margin:13px 0}
+.kv-expiry-preset{border:1px solid #d6dfd6;background:#fffdf8;color:#0B3C49;padding:9px 11px;border-radius:9px;font-size:11px;font-weight:800}
+.kv-expiry-preset.active{background:#0B3C49;border-color:#0B3C49;color:white}
+.kv-expiry-filtercard{margin-bottom:12px}.kv-expiry-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.kv-expiry-searchrow{display:flex;gap:12px;align-items:center;margin-top:12px}
+.kv-expiry-searchrow>input{flex:1;min-width:0}
+.kv-expiry-toggle{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:11px;color:#0B3C49;font-weight:750}
+.kv-expiry-toggle input{width:auto!important;min-width:16px;height:16px;margin:0}
+.kv-expiry-note{font-size:11px;color:#617b7e;margin:12px 0 0;line-height:1.5}
+.kv-expiry-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:12px}
+.kv-expiry-stats>div{background:#fffdf8;border:1px solid #e7dfd0;padding:13px;border-radius:12px}
+.kv-expiry-stats small{display:block;font-size:10px;color:#648088;font-weight:750;margin-bottom:5px}
+.kv-expiry-stats strong{font-size:21px;color:#0B3C49}
+.kv-expiry-list{background:#fffdf8;border:1px solid #e7dfd0;border-radius:13px;padding:12px}
+.kv-expiry-listhead{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;color:#0B3C49;margin:3px 2px 10px}.kv-expiry-listhead span{font-size:11px;color:#657f85}
+.kv-expiry-row{display:flex;align-items:center;gap:10px;border-top:1px solid #ece7dd;padding:12px 4px}
+.kv-expiry-icon{flex:0 0 32px;font-size:25px;text-align:center}.kv-expiry-description{flex:1;min-width:0;color:#0B3C49}
+.kv-expiry-description strong{display:block;font-size:13px;overflow-wrap:anywhere}.kv-expiry-description small{display:block;font-size:10px;color:#698087;margin-top:3px}
+.kv-expiry-right{text-align:right;display:flex;align-items:end;flex-direction:column;gap:6px;flex:0 0 auto}
+.kv-expiry-status{border-radius:20px;padding:5px 9px;background:#e1f1ed;color:#15614b;font-weight:900;font-size:10px}
+.kv-expiry-status.expired{background:#ffe0d9;color:#aa3b2b}.kv-expiry-status.urgent,.kv-expiry-status.today{background:#ffebbc;color:#805706}.kv-expiry-status.soon{background:#fff5dc;color:#865c17}
+.kv-expiry-edit{background:#D7E9E4;color:#0B3C49;padding:6px 9px;border:0;border-radius:8px;font-size:10px;font-weight:900}
+.kv-expiry-empty{text-align:center;padding:20px;color:#708b8d;font-size:12px}
+@media(max-width:750px){.kv-home-stockstrip,.kv-expiry-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.kv-expiry-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.kv-home-stock{padding:10px}.kv-expiry-head{padding:14px;align-items:flex-start;flex-direction:column}.kv-expiry-head h3{font-size:21px}.kv-expiry-presets{gap:5px}.kv-expiry-preset{padding:8px;font-size:10px}.kv-expiry-searchrow{flex-wrap:wrap}.kv-expiry-searchrow>input{flex-basis:100%}.kv-expiry-row{align-items:flex-start}.kv-expiry-right{max-width:100px}.kv-product-stock-pill{font-size:9px;padding:5px}.kv-expiry-status{text-align:center}}
+</style>
 </head><body>
 <script>
 (function(){
@@ -347,4 +400,4 @@ button.kv-expdash-breakrow:hover{background:#f1f7ef}
 <div id="busy" class="hide">Working…</div><div id="toast" class="toast hide" role="status"></div>
 <script src="./bridge.js?v=12" defer></script>
 <script src="./camera-modal.js?v=12" defer></script>
-<script src="./app.js?v=12" defer></script></body></html>
+<script src="./app.js?v=12.2" defer></script></body></html>
