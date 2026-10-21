@@ -98,7 +98,7 @@ function iconForProduct(name){const n=String(name||'').toLowerCase();const list=
 function productOptions(value){return `<option value="">Select product</option>${state.products.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${esc(p.id)}" ${value===p.id?'selected':''}>${esc(p.name)} · ${p.stock} left</option>`).join('')}`}
 function getProduct(id){return state.products.find(p=>p.id===id)}
 function addCartProduct(id){const p=getProduct(id);if(!p){toast('Product not found. Search or link the barcode.',true);return}if(p.stock<1){toast('Out of stock',true);return}
- const existing=state.cart.find(x=>x.kind==='product'&&x.id===id&&x.unitPrice===p.price);if(kvCartQuantity(id)>=Number(p.stock||0)){toast('Only '+p.stock+' left for '+p.name,true);return}if(existing)existing.qty++;else state.cart.push({kind:'product',id,qty:1,unitPrice:p.price});setView('sale');toast(p.name+' added')}
+ const salePrice=Number(p.effectivePrice??p.price);const existing=state.cart.find(x=>x.kind==='product'&&x.id===id&&x.unitPrice===salePrice);if(kvCartQuantity(id)>=Number(p.stock||0)){toast('Only '+p.stock+' left for '+p.name,true);return}if(existing)existing.qty++;else state.cart.push({kind:'product',id,qty:1,unitPrice:salePrice});setView('sale');toast(p.name+(p.discountActive?' · promotional price applied':'')+' added')}
 function kvSaleIcon(type){return kvActionIcon(type==='customer'?'users':type==='search'?'search':type==='cart'?'sale':type==='pay'?'services':'sale')}
 function kvExpiryDate(raw){
  if(!raw)return null;
@@ -161,6 +161,21 @@ function kvDiscountedSaleItems(){
 function kvSaleCancel(){
  const modal=$('kvSaleCancelDialog');if(modal)modal.classList.remove('hide');
 }
+function kvCustomer2Suggest(show){
+ const input=$('splitName2'),root=$('kvCustomer2Hints');if(!input||!root)return;
+ const typed=input.value.trim(),q=typed.toLocaleLowerCase('en');
+ const names=[...new Map((state.customers||[]).map(n=>[String(n).toLocaleLowerCase('en'),String(n)])).values()]
+  .filter(n=>!q||n.toLocaleLowerCase('en').includes(q)).slice(0,6);
+ const exact=(state.customers||[]).some(n=>String(n).toLocaleLowerCase('en')===q);
+ root.innerHTML=!show?'':(
+  names.map(n=>`<button type="button" class="kv-customer2-option" data-kv-customer2="${esc(n)}">👤 ${esc(n)}</button>`).join('')+
+  (typed&&!exact?`<button type="button" class="kv-customer2-option kv-customer2-create" data-kv-customer2="${esc(typed)}">＋ Use new customer: <strong>${esc(typed)}</strong></button>`:'')
+ );
+ root.querySelectorAll('[data-kv-customer2]').forEach(b=>b.addEventListener('click',()=>{
+  input.value=b.dataset.kvCustomer2;state.filters.splitName2=input.value;
+  root.innerHTML='';checkSplitTotal();input.focus();
+ }));
+}
 function sale(){
  const customer=state.filters.customer||'',payment=state.filters.payment||'Cash',split=!!state.filters.split,info=kvDiscountInfo();
  const payments=(state.base?.payments||['Cash','GCash','Bank Transfer','Card','Utang','Other']);
@@ -177,7 +192,7 @@ function sale(){
       <div class="kv-sale-field"><label for="saleDate">Date</label><input type="date" id="saleDate" value="${esc(state.filters.date||iso())}"></div></div>
       <button type="button" id="splitToggle" class="kv-inline-link">${split?'− Remove second customer':'+ Add second customer'}</button>
       <div class="kv-sale-split ${split?'':'hide'}" id="kvSaleSplit">
-        <div class="kv-sale-field"><label for="splitName2">Customer 2</label><input id="splitName2" placeholder="Second customer's name" value="${esc(state.filters.splitName2||'')}"></div>
+        <div class="kv-sale-field kv-customer2-field"><label for="splitName2">Customer 2</label><input id="splitName2" list="customerList" autocomplete="off" maxlength="100" placeholder="Search or add a customer" value="${esc(state.filters.splitName2||'')}" aria-describedby="kvCustomer2Help"><div class="kv-customer2-hints" id="kvCustomer2Hints" aria-label="Customer 2 suggestions"></div><small id="kvCustomer2Help" class="kv-customer2-help">Select an existing customer or enter a new name. A new name is saved after the sale is completed.</small></div>
         <div class="kv-sale-splitpair"><div><label>Customer 1 payment</label><select id="splitMethod1"><option value="Cash" ${state.filters.splitMethod1==='Utang'?'':'selected'}>Cash</option><option value="Utang" ${state.filters.splitMethod1==='Utang'?'selected':''}>Utang</option></select></div><div><label>Customer 1 amount</label><input type="number" min="0" step=".01" id="splitAmount1" value="${esc(state.filters.splitAmount1??'')}"></div></div>
         <div class="kv-sale-splitpair"><div><label>Customer 2 payment</label><select id="splitMethod2"><option value="Cash" ${state.filters.splitMethod2==='Utang'?'':'selected'}>Cash</option><option value="Utang" ${state.filters.splitMethod2==='Utang'?'selected':''}>Utang</option></select></div><div><label>Customer 2 amount</label><input type="number" min="0" step=".01" id="splitAmount2" value="${esc(state.filters.splitAmount2??'')}"></div></div>
         <span id="splitCheck" class="kv-sale-muted"></span>
@@ -219,7 +234,13 @@ function sale(){
  $('kvDiscardSale').onclick=()=>{state.cart=[];state.filters={};setView('home');toast('Unsaved sale discarded. No stock was changed.');};
  $('splitToggle').onclick=()=>{state.filters.split=!state.filters.split;if(state.filters.split){state.filters.splitName1=state.filters.customer||'';if(!state.filters.splitAmount1&&!state.filters.splitAmount2){const half=Math.floor(kvSaleNet()*50)/100;state.filters.splitAmount1=half.toFixed(2);state.filters.splitAmount2=(kvSaleNet()-half).toFixed(2)}}sale()};
  for(const i of [1,2]){
-  if(i===2)$('splitName2').addEventListener('input',e=>{state.filters.splitName2=e.target.value;checkSplitTotal()});
+  if(i===2){
+   const customer2=$('splitName2');
+   customer2.addEventListener('input',e=>{state.filters.splitName2=e.target.value;kvCustomer2Suggest(true);checkSplitTotal()});
+   customer2.addEventListener('focus',()=>kvCustomer2Suggest(true));
+   customer2.addEventListener('blur',()=>setTimeout(()=>{const hints=$('kvCustomer2Hints');if(hints)hints.innerHTML=''},180));
+   kvCustomer2Suggest(false);
+  }
   for(const key of ['Method','Amount'])$('split'+key+i).addEventListener('input',e=>{state.filters['split'+key+i]=e.target.value;checkSplitTotal()});
  }
  $('customer').addEventListener('input',e=>{state.filters.customer=e.target.value;state.filters.splitName1=e.target.value});
@@ -242,7 +263,7 @@ function sale(){
 function updateSaleResults(v){
  const q=String(v||'').trim().toLowerCase(),results=state.products.filter(p=>p.active&&(!q||p.name.toLowerCase().includes(q)||p.id.toLowerCase().includes(q)||(p.barcodes||[]).some(b=>b.includes(q)))).slice(0,q?8:5);
  const el=$('saleResults');if(!el)return;
- el.innerHTML=results.map(p=>{const stock=Math.max(0,Number(p.stock||0)),left=stock-kvCartQuantity(p.id);return `<button type="button" class="kv-product-pill" data-add="${esc(p.id)}" ${left<=0?'disabled':''}><span class="kv-pill-plus">+</span><span class="kv-pill-main">${esc(p.name)}<small>${left>0?left+' available':'Out of stock'}</small></span><b>${money(p.price)}</b></button>`}).join('')||'<div class="kv-sale-muted">No matching products.</div>';
+ el.innerHTML=results.map(p=>{const stock=Math.max(0,Number(p.stock||0)),left=stock-kvCartQuantity(p.id);return `<button type="button" class="kv-product-pill" data-add="${esc(p.id)}" ${left<=0?'disabled':''}><span class="kv-pill-plus">+</span><span class="kv-pill-main">${esc(p.name)}<small>${left>0?left+' available':'Out of stock'}</small></span><span class="kv-promo-saleprice"><b>${money(p.effectivePrice??p.price)}</b>${p.discountActive?`<s>${money(p.price)}</s>`:''}</span></button>`}).join('')||'<div class="kv-sale-muted">No matching products.</div>';
  el.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addCartProduct(b.dataset.add));
 }
 function cartSum(){return state.cart.reduce((n,x)=>n+(x.kind==='manual'?Number(x.amount||0):Number(x.qty||0)*Number(x.unitPrice||0)),0)}
@@ -696,13 +717,19 @@ function analytics(){
  const leadDays=Math.min(90,Math.max(1,Math.round(Number(state.filters.leadDays)||7)));
  state.filters.leadDays=leadDays;
  page('Product analytics','Fast/slow movement, stock risk and expiry alerts.',`<div class="banner">Speed uses physical units sold (including unpaid Utang), while revenue charts count only paid sales. Movement is normalized by days since the recorded purchase date.</div><div class="card"><div class="fieldgrid"><div class="field"><label for="leadDays">Supplier delivery lead time (days)</label><input id="leadDays" type="number" min="1" max="90" step="1" inputmode="numeric" value="${leadDays}"></div><div class="field" style="align-self:end"><button type="button" id="refreshAnalytics" class="btn block">Refresh Analytics</button></div></div><p class="muted" style="margin:9px 0 0">Restock recommendations use this delivery lead time plus 7 days of safety stock.</p></div><div id="analyticsData" aria-live="polite"><div class="muted">Loading analytics…</div></div>`);
- $('refreshAnalytics').onclick=()=>{
-  const value=Number($('leadDays').value);
-  if(!Number.isInteger(value)||value<1||value>90){toast('Enter a whole number of days between 1 and 90.',true);$('leadDays').focus();return}
+ const refreshButton=$('refreshAnalytics'),leadInput=$('leadDays');
+ if(!refreshButton||!leadInput){
+  const target=$('analyticsData');
+  if(target)target.innerHTML='<div class="banner red">Analytics controls failed to render. Refresh this app to install the latest update.</div>';
+  return;
+ }
+ refreshButton.onclick=()=>{
+  const value=Number(leadInput.value);
+  if(!Number.isInteger(value)||value<1||value>90){toast('Enter a whole number of days between 1 and 90.',true);leadInput.focus();return}
   state.filters.leadDays=value;
   loadAnalytics();
  };
- $('leadDays').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('refreshAnalytics').click()}});
+ leadInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();refreshButton.click()}});
  loadAnalytics();
 }
 async function loadAnalytics(){try{const d=await call('dashboard',{from:'2020-01-01',to:iso(),leadDays:state.filters.leadDays||7}),target=$('analyticsData');if(!target||state.screen!=='analytics')return;
@@ -818,7 +845,7 @@ function kvExpiryPaint(){
  </div>`;
  target.querySelectorAll('[data-exp-edit]').forEach(b=>b.onclick=()=>setView('edit',b.dataset.expEdit));
 }
-function more(){const options=[['⌂','Catalog & Hours','catalogAdmin','owner'],['₱','Payment Services','services','sales'],['▤','Record Other Expense','expenses','expenses'],['▥','Expenses Dashboard','expenseDashboard','expenses'],['◷','Expiry Dates','expiryDashboard','stock'],['▦','Stock / Inventory','inventory','stock'],['▥','Add Stock','restock','stock'],['⊗','Damaged / Expired Stock','adjust','stock'],['≋','Physical Stock Count','stockCount','stock'],['◫','Business Dashboard','dashboard','dashboard'],['◷','Fast & Slow Analytics','analytics','dashboard'],['◎','Customer History','history','sales'],['⌁','Offline Queue ('+state.pending.length+')','queue','sales'],['♙','Team & Roles','users','owner'],['✓','QA Integrity Audit','qaIntegrity','owner'],['↩','Refund Obligations','refundsPage','owner'],['👥','Customer Presence','visitorsPage','owner']];
+function more(){const options=[['⌂','Customer View Manager','catalogAdmin','owner'],['₱','Payment Services','services','sales'],['▤','Record Other Expense','expenses','expenses'],['▥','Expenses Dashboard','expenseDashboard','expenses'],['◷','Expiry Dates','expiryDashboard','stock'],['▦','Stock / Inventory','inventory','stock'],['▥','Add Stock','restock','stock'],['⊗','Damaged / Expired Stock','adjust','stock'],['≋','Physical Stock Count','stockCount','stock'],['◫','Business Dashboard','dashboard','dashboard'],['◷','Fast & Slow Analytics','analytics','dashboard'],['◎','Customer History','history','sales'],['⌁','Offline Queue ('+state.pending.length+')','queue','sales'],['♙','Team & Roles','users','owner'],['✓','QA Integrity Audit','qaIntegrity','owner'],['↩','Refund Obligations','refundsPage','owner'],['👥','Customer Presence','visitorsPage','owner']];
  page('More tools','Keep your shop organized, online or offline.',`<div class="list">${options.filter(x=>may(x[3])).map(x=>`<button class="item" style="width:100%;text-align:left" data-view="${x[2]}"><span style="font-size:22px">${x[0]}</span><strong style="flex:1">${x[1]}</strong><span>→</span></button>`).join('')}</div><div class="gap"></div><div class="card"><div class="row"><div><strong>${esc(state.user?.name)}</strong><div class="muted">${esc(state.user?.role)}</div></div><button class="btn outline small" id="logoutBtn">Sign out</button></div>${may('owner')?'<div class="sep"></div><button class="btn light block" id="backupBtn">Create full Google Sheets backup</button>':''}</div>`);
  $('logoutBtn').onclick=logout;if($('backupBtn'))$('backupBtn').onclick=()=>work(async()=>{const r=await call('backupNow',{requestId:uid()});toast('Backup created');window.open(r.url,'_blank')})}
 function users(){page('Team & permissions','You decide which accounts are Owners and Cashiers.',`<div class="card"><div class="section" style="margin-top:0">Add / update account</div><form id="userForm">${textField('userName','Login username','', 'required')}${textField('displayName','Display name','', 'required')}${textField('userPin','PIN / passphrase (8+ characters)','', 'type="password"')}${sel('userRole','Role',['Cashier','Owner'],'Cashier')}
@@ -835,13 +862,88 @@ async function services(){
 }
 
 async function catalogAdmin(){
- page('Catalog and store hours','Active retail products are visible by default. Hide items individually.',`<div class="card"><div id="storeSettingForm"><p>Loading settings…</p></div></div><div class="card"><h3>Publish a product</h3><div class="field"><label>Product</label><select id="catProd">${state.products.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')}</select></div><div class="field"><label>Public visibility</label><select id="catPublic"><option value="no">Private</option><option value="yes">Visible in catalog</option></select></div><div class="field"><label>HTTPS product photo URL</label><input id="catPhoto" placeholder="https://…"></div><div class="field"><label>Promotion text</label><input id="catPromo"></div><div class="field"><label>Promotional selling price (optional)</label><input id="catPrice" type="number" step="0.01" min="0"></div><div class="field"><label>Promotion begins</label><input id="catStart" type="date"></div><div class="field"><label>Promotion ends</label><input id="catEnd" type="date"></div><button class="btn block" id="saveCatalog">Save public catalog entry</button></div>`);
- try{const s=await call('storeSettings');if(state.screen!=='catalogAdmin')return;
- $('storeSettingForm').innerHTML=`<div class="field"><label>Store name</label><input id="storeName" value="${esc(s.storeName)}"></div><div class="fieldgrid"><div class="field"><label>Opening time</label><input id="openTime" type="time" value="${esc(s.openTime)}"></div><div class="field"><label>Closing time</label><input id="closeTime" type="time" value="${esc(s.closeTime)}"></div></div><div class="field"><label>Customer-facing status</label><select id="storeMode"><option value="OPEN" ${s.storeMode==='OPEN'?'selected':''}>Open</option><option value="AWAY" ${s.storeMode==='AWAY'?'selected':''}>Away</option><option value="CLOSED" ${s.storeMode==='CLOSED'?'selected':''}>Closed</option></select></div><div class="field"><label>Back on (optional; Philippines time)</label><input type="datetime-local" id="reopenAt" value="${esc(s.reopenAt||'')}"></div><div class="field"><label>Customer message (optional)</label><input id="storeMessage" maxlength="160" value="${esc(s.storeMessage||'')}" placeholder="We’ll be back soon"></div><button class="btn block" id="saveStore">Save store settings</button><div class="banner green" style="margin-top:12px">Customers see active retail products, prices and store status. No login is needed.</div><button id="showCustomerLink" class="btn outline block" style="margin-top:7px">Get customer shopping link ↗</button><div id="customerLinkResult" class="tiny" style="margin-top:9px"></div>`;
- $('showCustomerLink').onclick=()=>work(async()=>{const x=await call('customerLink');$('customerLinkResult').innerHTML=x.ready?`<label>Share this link with customers</label><input type="text" readonly id="pubLink" value="${esc(x.url)}"><button class="btn alt" id="copyPublicLink">Copy link</button>`:esc(x.note||'Deploy the script as Web app first.');if(x.ready){$('copyPublicLink').onclick=async()=>{try{await navigator.clipboard.writeText(x.url);toast('Customer link copied')}catch(e){$('pubLink').select();toast('Select the link to copy it')}}}});
- $('saveStore').onclick=()=>work(async()=>{await call('saveStoreSettings',{requestId:uid(),storeName:$('storeName').value,openTime:$('openTime').value,closeTime:$('closeTime').value,storeMode:$('storeMode').value,reopenAt:$('reopenAt').value,storeMessage:$('storeMessage').value});toast('Settings saved')});}
- catch(e){toast(e.message,true)}
- $('saveCatalog').onclick=()=>work(async()=>{const id=$('catProd').value;if(!id)throw new Error('Select product');await call('saveCatalogProduct',{requestId:uid(),productId:id,isPublic:$('catPublic').value==='yes',photoUrl:$('catPhoto').value,promotion:$('catPromo').value,promoPrice:$('catPrice').value,promoStart:$('catStart').value,promoEnd:$('catEnd').value});toast('Catalog listing saved')});
+ const opts=[
+ ['showCategoryIcons','Automatically assign category icons'],['allowCustomIcons','Allow custom product illustrations'],
+ ['animateIcons','Animate icons on hover or tap'],['showPrices','Show product prices'],
+ ['showStock','Show exact stock quantities'],['showDiscounted','Show Special Offers'],
+ ['showBest','Show Best Sellers'],['showFeatured','Show Featured Products']];
+ const icons=[['auto','Auto-detect product type'],['bottle','Mini soda bottle'],['chips','Mini chips pouch'],['noodles','Mini noodle pack'],
+ ['milk','Mini milk carton'],['coffee','Mini coffee pouch'],['can','Canned goods'],['sardines','Mini sardine can'],
+ ['drink','Juice cup'],['water','Water bottle'],['sachet','Mini sachet'],['candy','Candy'],['cookie','Biscuits'],['beer','Bottle beverage'],
+ ['medicine','Medicine capsule'],['vegetable','Fresh produce'],['ice','Ice cubes'],['soap','Soap bottle'],['powder','Detergent pouch'],
+ ['cleaning','Cleaning bottle'],['oil','Cooking oil'],['sauce','Condiment bottle'],['bread','Bread'],['egg','Egg'],
+ ['cigarette','Cigarette pack'],['household','Household item'],['service','Services']];
+ const productRows=state.products.slice().sort((a,b)=>a.name.localeCompare(b.name));
+ const productOptions=productRows.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.id)}</option>`).join('');
+ page('Customer View Manager','Control your public catalog, discounts and cute mini-product icons.',`
+ <div class="kv-catalog-hero"><div><small>PUBLIC STOREFRONT</small><strong>Your customers see only what you publish.</strong><p>Search · Best Sellers · Special Offers · Featured Products</p></div><span aria-hidden="true">✦</span></div>
+ <div class="card kv-catalog-panel"><h3>Customer View display settings</h3><p class="muted">Your approved default: all eight features enabled. Change any option at any time.</p><div id="kvCatalogSettings">Loading settings…</div><button class="btn block" id="kvSaveDisplay" type="button">Save customer view settings</button></div>
+ <div class="card kv-catalog-panel"><h3>Manage a product</h3><p class="muted">Choose a product, then publish, feature, discount or change its illustration.</p>
+ <div class="field"><label for="catFind">Find a product</label><input id="catFind" autocomplete="off" placeholder="Type product name or ID…"></div>
+ <div class="field"><label for="catProd">Product</label><select id="catProd">${productOptions}</select></div>
+ <div id="catProductStatus" class="kv-cat-summary">Select a product to load its current customer settings.</div>
+ <div class="fieldgrid"><div class="field"><label for="catPublic">Show in Customer View</label><select id="catPublic"><option value="yes">Yes — publish</option><option value="no">No — private</option></select></div><div class="field"><label for="catIcon">Cute product illustration</label><select id="catIcon">${icons.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select></div></div>
+ <div class="fieldgrid"><div class="field"><label for="catFeatured">Featured product</label><select id="catFeatured"><option value="no">Not featured</option><option value="yes">Featured ✦</option></select></div><div class="field"><label for="catBestseller">Best Seller label</label><select id="catBestseller"><option value="AUTO">Automatic from sales</option><option value="YES">Always highlight ★</option><option value="NO">Do not highlight</option></select></div></div>
+ <div class="field"><label for="catPhoto">Product photo URL (optional)</label><input id="catPhoto" type="url" placeholder="https://example.com/product.jpg"></div>
+ <div class="kv-catalog-discount"><h3>Special offer / Discount</h3><div class="fieldgrid"><div class="field"><label for="catDiscKind">Discount type</label><select id="catDiscKind"><option value="none">No discount</option><option value="percent">Percentage off (%)</option><option value="amount">Amount off (₱)</option><option value="final">Set final promo price (₱)</option></select></div><div class="field"><label for="catDiscValue">Discount value</label><input type="number" id="catDiscValue" min="0" step="0.01" value="0" inputmode="decimal"></div></div><div id="catPricePreview" class="kv-cat-summary" aria-live="polite">Choose a product to preview its pricing.</div>
+ <div class="field"><label for="catPromo">Promotion message (optional)</label><input id="catPromo" maxlength="180" placeholder="Weekend treat · Limited stock!"></div>
+ <div class="fieldgrid"><div class="field"><label for="catStart">Promo start date (optional)</label><input type="date" id="catStart"></div><div class="field"><label for="catEnd">Promo end date (optional)</label><input type="date" id="catEnd"></div></div><p class="tiny">An active discount appears in the customer catalog and applies automatically when a product is added to the POS sale. Posted sales keep their original price snapshot.</p></div>
+ <button class="btn block" id="saveCatalog">Save product for Customer View</button></div>
+ <div class="card kv-catalog-panel"><h3>Store hours & customer link</h3><div id="storeSettingForm">Loading store settings…</div></div>`);
+ const setIds=opts.map(([k])=>'kvSetting_'+k);
+ const cfgBox=$('kvCatalogSettings');cfgBox.innerHTML=opts.map(([k,label])=>`<label class="kv-setting-line" for="kvSetting_${k}"><span>${esc(label)}</span><input type="checkbox" id="kvSetting_${k}" checked></label>`).join('');
+ const showPrice=()=>{const p=state.products.find(x=>x.id===$('catProd')?.value);if(!p)return;
+  const kind=$('catDiscKind').value,v=Number($('catDiscValue').value),reg=Number(p.price);
+  if(kind==='none'){$('catPricePreview').textContent='Regular selling price: '+money(reg)+' · No active discount';return;}
+  if(!Number.isFinite(v)||v<0){$('catPricePreview').textContent='Enter a valid positive discount.';return;}
+  let price=kind==='percent'?reg*(1-v/100):kind==='amount'?reg-v:v;
+  price=Math.round((price+Number.EPSILON)*100)/100;
+  const okay=price>=0&&price<=reg&&(kind!=='percent'||v<=100);
+  $('catPricePreview').textContent=okay?'Regular '+money(reg)+' → Promotional '+money(price)+' · Customer saves '+money(reg-price):'Discount must not exceed the regular price.';
+ };
+ ['catDiscKind','catDiscValue'].forEach(id=>$(id).addEventListener('input',showPrice));
+ const loadEntry=async()=>{
+  const id=$('catProd').value;if(!id)return;
+  $('catProductStatus').textContent='Loading product settings…';
+  try{const e=await call('catalogEntry',{productId:id});if(state.screen!=='catalogAdmin'||$('catProd').value!==id)return;
+   const p=state.products.find(x=>x.id===id);
+   $('catPublic').value=e.isPublic?'yes':'no';$('catIcon').value=e.iconStyle||'auto';$('catFeatured').value=e.featured?'yes':'no';$('catBestseller').value=e.bestSeller||'AUTO';
+   $('catPhoto').value=e.photoUrl||'';$('catPromo').value=e.promotion||'';$('catStart').value=e.promoStart||'';$('catEnd').value=e.promoEnd||'';
+   $('catDiscKind').value=e.promoPrice===''?'none':'final';$('catDiscValue').value=e.promoPrice===''?'0':String(e.promoPrice);
+   $('catProductStatus').innerHTML='<strong>'+esc(p?.name||id)+'</strong><br>Regular '+money(p?.price||0)+' · '+Math.max(0,Number(p?.stock)||0)+' left · '+esc(p?.category||'');showPrice();
+  }catch(e){if($('catProductStatus'))$('catProductStatus').textContent='Could not load: '+e.message;toast(e.message,true)}
+ };
+ $('catProd').addEventListener('change',loadEntry);
+ $('catFind').addEventListener('input',e=>{const term=e.target.value.trim().toLowerCase();const matches=productRows.filter(p=>(p.name+' '+p.id).toLowerCase().includes(term)).slice(0,100);
+  const existing=$('catProd').value;$('catProd').innerHTML=matches.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.id)}</option>`).join('');
+  if(matches.length){if(matches.some(p=>p.id===existing))$('catProd').value=existing;loadEntry()}else $('catProductStatus').textContent='No product matches your search.';
+ });
+ $('kvSaveDisplay').onclick=()=>work(async()=>{
+  const values={requestId:uid()};opts.forEach(([k])=>values[k]=$('kvSetting_'+k).checked);
+  await call('saveCatalogDisplaySettings',values);toast('Customer View settings saved');
+ });
+ $('saveCatalog').onclick=()=>work(async()=>{
+  const product=state.products.find(x=>x.id===$('catProd').value);if(!product)throw Error('Please select a product.');
+  const kind=$('catDiscKind').value,v=Number($('catDiscValue').value),regular=Number(product.price);
+  if(!Number.isFinite(v)||v<0)throw Error('Enter a valid discount.');
+  let promoPrice='';if(kind!=='none'){
+   if(kind==='percent'&&v>100)throw Error('Percent discount must be between 0 and 100.');
+   const value=kind==='percent'?regular*(1-v/100):kind==='amount'?regular-v:v;
+   if(!Number.isFinite(value)||value<0||value>regular)throw Error('Discount cannot exceed regular selling price.');
+   promoPrice=(Math.round((value+Number.EPSILON)*100)/100).toFixed(2);
+  }
+  if($('catStart').value&&$('catEnd').value&&$('catStart').value>$('catEnd').value)throw Error('Discount end date cannot precede start date.');
+  const payload={requestId:uid(),productId:product.id,isPublic:$('catPublic').value==='yes',iconStyle:$('catIcon').value,featured:$('catFeatured').value==='yes',bestSeller:$('catBestseller').value,photoUrl:$('catPhoto').value,promotion:$('catPromo').value,promoPrice,promoStart:$('catStart').value,promoEnd:$('catEnd').value};
+  await call('saveCatalogProduct',payload);await refreshProducts();toast('Saved product publication, illustration and promotion.');await loadEntry();
+ });
+ try{
+  const [s,cfg]=await Promise.all([call('storeSettings'),call('catalogDisplaySettings')]);if(state.screen!=='catalogAdmin')return;
+  opts.forEach(([k])=>{const e=$('kvSetting_'+k);if(e)e.checked=cfg[k]!==false});
+  $('storeSettingForm').innerHTML=`<div class="field"><label for="storeName">Store name</label><input id="storeName" value="${esc(s.storeName)}"></div><div class="fieldgrid"><div class="field"><label for="openTime">Opening time</label><input id="openTime" type="time" value="${esc(s.openTime)}"></div><div class="field"><label for="closeTime">Closing time</label><input id="closeTime" type="time" value="${esc(s.closeTime)}"></div></div><div class="field"><label for="storeMode">Public status</label><select id="storeMode"><option value="OPEN" ${s.storeMode==='OPEN'?'selected':''}>Open</option><option value="AWAY" ${s.storeMode==='AWAY'?'selected':''}>Away</option><option value="CLOSED" ${s.storeMode==='CLOSED'?'selected':''}>Closed</option></select></div><div class="field"><label for="reopenAt">Back on (optional)</label><input type="datetime-local" id="reopenAt" value="${esc(s.reopenAt||'')}"></div><div class="field"><label for="storeMessage">Message to customers</label><input id="storeMessage" maxlength="160" value="${esc(s.storeMessage||'')}"></div><button class="btn block" id="saveStore">Save store hours & status</button><button type="button" class="btn outline block" id="showCustomerLink" style="margin-top:10px">Get customer shopping link ↗</button><div id="customerLinkResult" class="tiny" style="margin-top:9px"></div>`;
+  $('showCustomerLink').onclick=()=>work(async()=>{const x=await call('customerLink');$('customerLinkResult').innerHTML=x.ready?`<label>Public link (no owner password)</label><input id="pubLink" readonly value="${esc(x.url)}"><button class="btn alt" id="copyPublicLink">Copy link</button>`:esc(x.note||'Web app deployment required');if(x.ready)$('copyPublicLink').onclick=async()=>{try{await navigator.clipboard.writeText(x.url);toast('Public link copied')}catch(e){$('pubLink').select();toast('Select the link to copy')}}});
+  $('saveStore').onclick=()=>work(async()=>{await call('saveStoreSettings',{requestId:uid(),storeName:$('storeName').value,openTime:$('openTime').value,closeTime:$('closeTime').value,storeMode:$('storeMode').value,reopenAt:$('reopenAt').value,storeMessage:$('storeMessage').value});toast('Store hours and status saved')});
+ }catch(e){if($('storeSettingForm'))$('storeSettingForm').textContent='Update Code.gs and deploy the new Apps Script version first. '+e.message;toast(e.message,true)}
+ await loadEntry();
 }
 
 function initialEvents(){document.addEventListener('click',e=>{const v=e.target.closest('[data-view]');if(!v)return;const target=v.dataset.view;if(target==='home'||may(['dashboard','analytics'].includes(target)?'dashboard':target==='restock'||target==='expiryDashboard'?'stock':target==='expenses'||target==='expenseDashboard'?'expenses':target==='utang'?'credit':target==='users'?'owner':target==='visitorsPage'?'owner':target==='catalogAdmin'?'owner':target==='services'?'sales':target==='history'?'sales':target==='inventory'?'stock':target==='products'?'sales':target==='editFinder'?'products':target==='scan'?'sales':target==='create'?'products':target==='adjust'||target==='stockCount'?'stock':'sales'))setView(target)});
